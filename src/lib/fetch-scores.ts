@@ -38,8 +38,28 @@ async function getScores(sport: string): Promise<GameScore[]> {
   }))
 }
 
-export async function getAllScores(sports: string[]): Promise<ScoreMap> {
-  const results = await Promise.allSettled(sports.map(s => getScores(s)))
+export async function getAllScores(sports: string[], events: OddsEvent[]): Promise<ScoreMap> {
+  const now = new Date()
+  
+  // Only fetch scores if any game is potentially live
+  const hasLiveGames = events.some(e => {
+    const start = new Date(e.commence_time)
+    const hoursAgo = (now.getTime() - start.getTime()) / (1000 * 60 * 60)
+    return hoursAgo >= 0 && hoursAgo < 4 // started within last 4 hours
+  })
+
+  if (!hasLiveGames) return {}
+
+  // Only fetch scores for sports that have live games
+  const sportsWithLiveGames = sports.filter(sport =>
+    events.some(e => {
+      const start = new Date(e.commence_time)
+      const hoursAgo = (now.getTime() - start.getTime()) / (1000 * 60 * 60)
+      return e.sport_key === sport && hoursAgo >= 0 && hoursAgo < 4
+    })
+  )
+
+  const results = await Promise.allSettled(sportsWithLiveGames.map(s => getScores(s)))
 
   const scoreMap: ScoreMap = {}
 

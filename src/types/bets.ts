@@ -49,4 +49,5 @@ export type EVBet = {
     trueProb: number
     impliedProb: number
     ev: number
+    referenceType: 'pinnacle' | 'consensus'
 }

@@ -9,7 +9,7 @@ const USE_MOCK = process.env.NODE_ENV === 'development'
 
 export async function GET() {
 
-  if (USE_MOCK) { return NextResponse.json(mockData) }
+  //if (USE_MOCK) { return NextResponse.json(mockData) }
 
   try {
 
@@ -19,10 +19,8 @@ export async function GET() {
       // add others as needed
     ]
 
-    const [events, scoreMap] = await Promise.all([
-      getAllOdds(),
-      getAllScores(ACTIVE_SPORTS),
-    ])
+    const events = await getAllOdds()
+    const scoreMap = await getAllScores(ACTIVE_SPORTS, events)
 
     const evBets: EVBet[] = events
       .flatMap(findEVBets)

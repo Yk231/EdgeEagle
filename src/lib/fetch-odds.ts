@@ -78,7 +78,9 @@ const SPORT_MARKETS: Record<string, string> = {
 }
 
 const BOOKS = [
-    /*
+    // eu
+    'pinnacle', 
+    // us
     'draftkings',
     'fanduel',
     'betmgm',
@@ -88,13 +90,17 @@ const BOOKS = [
     'betus',
     'mybookieag',
     'lowvig',
+    'fanatics', // only for paid subscription
+    'williamhill_us', // only for paid subscription
+    // us2
     'ballybet',
     'betparx',
     'espnbet',
     'fliff',
     'hardrockbet',
+    'rebet', // only for paid subscription
+    // us_ex
     'betopenly',
-    */
     'kalshi',
     'novig',
     'polymarket',
@@ -105,32 +111,18 @@ export async function getOdds(sport: string): Promise<OddsEvent[]> {
 
     const markets = SPORT_MARKETS[sport] ?? 'h2h,spreads,totals'
 
-    const [pinnacleRes, usRes] = await Promise.all([
-        fetch(
-            `${BASE_URL}/sports/${sport}/odds?apiKey=${API_KEY}&regions=eu&markets=${markets}&bookmakers=pinnacle&oddsFormat=american`,
-        ),
-        fetch(
-            `${BASE_URL}/sports/${sport}/odds?apiKey=${API_KEY}&regions=us,us_ex&markets=${markets}&bookmakers=${BOOKS}&oddsFormat=american`,
-        ),
-    ])
+    const res = await fetch(
+        `${BASE_URL}/sports/${sport}/odds?apiKey=${API_KEY}&regions=us,us_ex,us2,eu&markets=${markets}&bookmakers=${BOOKS}&oddsFormat=american`,
+    )
 
-    if (!pinnacleRes.ok || !usRes.ok) {
-        throw new Error(`Failed to fetch odds for ${sport}`)
+    if (!res.ok) {
+        console.warn(`Fetch failed for ${sport}: ${res.status}`)
+        return []
     }
 
-    const [pinnacleEvents, usEvents]: [OddsEvent[], OddsEvent[]] = 
-        await Promise.all([pinnacleRes.json(), usRes.json()])
-
-    // Merge by event id — add Pinnacle bookmaker into each matching US event
-    const usEventMap = new Map(usEvents.map(e => [e.id, e]))
-    for (const pinnacleEvent of pinnacleEvents) {
-        const usEvent = usEventMap.get(pinnacleEvent.id)
-        if (usEvent && pinnacleEvent.bookmakers.length > 0) {
-            usEvent.bookmakers.push(...pinnacleEvent.bookmakers)
-        }
-    }
-
-    return usEvents
+    const events: OddsEvent[] = await res.json()
+    
+    return events
 }
 
 export async function getAllOdds(): Promise<OddsEvent[]> {

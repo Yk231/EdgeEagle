@@ -116,6 +116,9 @@ export const BOOKMAKERS = [
   { key: 'novig', name: 'Novig', logo: '/logos/Novig.jpeg' },
   { key: 'polymarket', name: 'Polymarket', logo: '/logos/Polymarket.png' },
   { key: 'prophetx', name: 'ProphetX', logo: '/logos/ProphetX.png' },
+  { key: 'rebet', name: 'ReBet', logo: '/logos/ReBet.png' },
+  { key: 'williamhill_us', name: 'Ceasers', logo: '/logos/Ceasers.png' },
+  { key: 'fanatics', name: 'Fanatics', logo: '/logos/Fanatics.png' },
   { key: 'pinnacle', name: 'Pinnacle', logo: '/logos/Pinnacle.png' },
 ]
 export const BOOKMAKER_LOGOS: Record<string, string> = 

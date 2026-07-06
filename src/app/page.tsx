@@ -87,7 +87,7 @@ export default function Home() {
 
       {/* Header */}
       <header className="border-b border-gray-800/60 px-30 py-4">
-        <img src={'/logos/ArbEagleLogo.png'} className=" h-34" />
+        <img src={'/logos/EdgeEagleLogo.png'} className=" h-34" />
       </header>
 
       {/* Ticker bar — top bets scrolling */}
