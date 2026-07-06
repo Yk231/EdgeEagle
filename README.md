@@ -4,6 +4,8 @@
 
 EdgeEagle identifies positive expected value betting opportunities by comparing sportsbook odds against Pinnacle's devigged probability — the sharpest reference line available in the market. Instead of guessing which bets are good, EdgeEagle does the math.
 
+![Dashboard](Screenshots/EagleEagleDashboard.png) ![Modal](Screenshots/EdgeEagleModal.png)
+
 ---
 
 ## What is +EV betting?
