@@ -6,7 +6,7 @@ import GameModal from '../components/GameModal'
 import Filter from '@/components/Filters'
 import { EVBet, OddsEvent } from '@/types/bets'
 import { PAGE_SIZE, REFRESH_INTERVAL, SPORTS, SPORT_LOGOS, MARKETS, MARKET_NAMES, BOOKMAKERS, BOOKMAKER_LOGOS, BOOKMAKER_NAMES } from '@/lib/constants'
-import { RedPulse } from '@/components/Pulse'
+import { GreenPulse, RedPulse } from '@/components/Pulse'
 
 type Meta = {
   eventsScanned: number
@@ -87,7 +87,16 @@ export default function Home() {
 
       {/* Header */}
       <header className="border-b border-gray-800/60 px-30 py-4">
-        <img src={'/logos/EdgeEagleLogo.png'} className=" h-34" />
+        <div className="flex flex-row">
+          <img src={'/logos/EdgeEagleLogo.png'} className=" h-34" />
+
+          <div className="ml-auto flex items-center gap-4 text-base text-gray-500">
+            <div className="flex items-center gap-1.5">
+              <GreenPulse />
+              <span>Updated {new Date(meta.fetchedAt).toLocaleTimeString()}</span>
+            </div>
+          </div>
+        </div>
       </header>
 
       {/* Ticker bar — top bets scrolling */}
