@@ -1,5 +1,5 @@
 import { OddsEvent, Outcome, EVBet } from '@/types/bets'
-import { median, americanToImplied } from './utils'
+import { americanToImplied } from './utils'
 
 export function devig(outcomes: Outcome[]): Record<string, number> {
     const total = outcomes.reduce((sum, o) => sum + americanToImplied(o.price), 0)
@@ -13,37 +13,19 @@ export function calculateEV(trueProb: number, odds: number): number {
     return (trueProb * potentialProfit) - ((1 - trueProb) * 1)
 }
 
-export function calculateMedian(event: OddsEvent, marketKey: string, minBooks: number = 4): Record<string, number> | null {
-    
-    const probAccumulator: Record<string, number[]> = {}
-
-    for (const book of event.bookmakers) {
-        const market = book.markets.find(m => m.key === marketKey)
-        if (!market) continue
-        const devigged = devig(market.outcomes)
-
-        for (const [name, prob] of Object.entries(devigged)) {
-            if (!probAccumulator[name]) probAccumulator[name] = []
-            probAccumulator[name].push(prob)
-        }
-    }
-
-    const names = Object.keys(probAccumulator)
-    if (names.length < minBooks) return null 
-    for (const n of names) {
-        if (probAccumulator[n].length < minBooks) return null
-    }
-
-    return Object.fromEntries(
-        names.map(n => [n, median(probAccumulator[n])])
-    )
+// Key an outcome by name + line so different spreads/totals across books don't get mixed
+function outcomeKey(o: Outcome, isH2H: boolean): string {
+    return isH2H ? o.name : `${o.name}_${o.point}`
 }
 
 export function findEVBets(event: OddsEvent): EVBet[] {
     const results: EVBet[] = []
 
+    //Find pinnacle
     const pinnacle = event.bookmakers.find(b => b.key === 'pinnacle')
+    if (!pinnacle) return results
 
+    // Make a set of all market keys
     const allMarketKeys = new Set<string>()
     for (const book of event.bookmakers) {
         for (const market of book.markets) {
@@ -51,28 +33,28 @@ export function findEVBets(event: OddsEvent): EVBet[] {
         }
     }
 
-    if (!pinnacle) return results
+    for (const marketKey of allMarketKeys) {
+        const isH2H = marketKey.startsWith('h2h')
 
-    for (const pinnacleMarket of pinnacle.markets) {
-        const isH2H = pinnacleMarket.key.startsWith('h2h')
+        // Pinnacle is the only reference. Skip markets it doesn't price.
+        const pinnacleMarket = pinnacle?.markets.find(m => m.key === marketKey)
+        if (!pinnacleMarket || pinnacleMarket.outcomes.length === 0) continue
 
-        // Key by name+point for spreads/totals so we only compare same lines
-        const devigged = devig(pinnacleMarket.outcomes)
         const trueProbMap: Record<string, number> = {}
+        const devigged = devig(pinnacleMarket.outcomes)
         for (const o of pinnacleMarket.outcomes) {
-            const key = isH2H ? o.name : `${o.name}_${o.point}`
-            trueProbMap[key] = devigged[o.name]
+            trueProbMap[outcomeKey(o, isH2H)] = devigged[o.name]
         }
 
+        // Loop all non-Pinnacle books for this market
         for (const bookmaker of event.bookmakers) {
             if (bookmaker.key === 'pinnacle') continue
 
-            const market = bookmaker.markets.find(m => m.key === pinnacleMarket.key)
+            const market = bookmaker.markets.find(m => m.key === marketKey)
             if (!market) continue
 
             for (const outcome of market.outcomes) {
-                const key = isH2H ? outcome.name : `${outcome.name}_${outcome.point}`
-                const trueProb = trueProbMap[key]
+                const trueProb = trueProbMap[outcomeKey(outcome, isH2H)]
                 if (trueProb === undefined) continue
 
                 const impliedProb = americanToImplied(outcome.price)
@@ -84,7 +66,7 @@ export function findEVBets(event: OddsEvent): EVBet[] {
                         sport_title: event.sport_title,
                         commence_time: event.commence_time,
                         game_title: `${event.away_team} vs. ${event.home_team}`,
-                        market: pinnacleMarket.key,
+                        market: marketKey,
                         team: outcome.name,
                         point: outcome.point,
                         bookmaker_key: bookmaker.key,
@@ -92,8 +74,7 @@ export function findEVBets(event: OddsEvent): EVBet[] {
                         odds: outcome.price,
                         trueProb,
                         impliedProb,
-                        ev,
-                        referenceType: 'pinnacle'
+                        ev
                     })
                 }
             }

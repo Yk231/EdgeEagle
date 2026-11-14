@@ -1,70 +1,15 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { formatGameTime, formatOdds, americanToImplied } from '@/lib/utils'
-import { calculateEV } from '@/lib/ev-calc'
-import { OddsEvent, Bookmaker } from '@/types/bets'
-import { MARKET_NAMES } from '@/lib/constants'
+import { calculateEV, findEVBets } from '@/lib/ev-calc'
+import { OddsEvent, Bookmaker, EVBet } from '@/types/bets'
+import { MARKET_NAMES, SPORT_ADDITIONAL_MARKETS } from '@/lib/constants'
 import { RedPulse } from './Pulse'
-
-// ─── Pie Chart ───────────────────────────────────────────────────────────────
-function PieChart({ probs, labels, colors, centerLabel }: {
-  probs: number[]
-  labels: string[]
-  colors: string[]
-  centerLabel?: string
-}) {
-  if (!probs.length || probs.some((_, i) => !labels[i])) return null
-
-  const cx = 70
-  const cy = 70
-  const r = 54
-  const circumference = 2 * Math.PI * r
-
-  let cumulative = 0
-  const slices = probs.map((prob, i) => {
-    const arc = circumference * prob
-    const offset = circumference * cumulative
-    cumulative += prob
-    return { arc, offset, color: colors[i], prob, label: labels[i] }
-  })
-
-  return (
-    <div className="flex flex-col items-center gap-3">
-      <svg width="140" height="140" viewBox="0 0 140 140">
-        {slices.map((slice, i) => (
-          <circle
-            key={i}
-            cx={cx} cy={cy} r={r}
-            fill="none"
-            stroke={slice.color}
-            strokeWidth="14"
-            strokeDasharray={`${slice.arc} ${circumference - slice.arc}`}
-            strokeDashoffset={-slice.offset + circumference / 4}
-            opacity="0.9"
-          />
-        ))}
-        <text x={cx} y={cy} textAnchor="middle" fill="#6b7280" fontSize="11">PINNACLE</text>
-        <text x={cx} y={cy + 13} textAnchor="middle" fill="#6b7280" fontSize="11">
-          {centerLabel ?? 'WIN PROB'}
-        </text>
-      </svg>
-      <div className="flex flex-col gap-1">
-        {slices.map((slice, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
-            <span className="text-gray-400">
-              {slice.label} {(slice.prob * 100).toFixed(1)}%
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+import { LOGOS } from '@/lib/logos'
+import { PieChart, getPieConfig } from './PieChart'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
 type BookRow = {
   book: Bookmaker
   price: number
@@ -72,7 +17,6 @@ type BookRow = {
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-
 export default function GameModal({
   event,
   market,
@@ -91,6 +35,60 @@ export default function GameModal({
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  const [extraMarketKeys, setExtraMarketKeys] = useState<string[] | null>(null)
+  const [extraEvBets, setExtraEvBets] = useState<EVBet[]>([])
+  const [loadingExtra, setLoadingExtra] = useState(false)
+  const [extraError, setExtraError] = useState<string | null>(null)
+
+  async function loadAdditionalMarkets() {
+    const marketsParam = SPORT_ADDITIONAL_MARKETS[event.sport_key]
+    if (!marketsParam) {
+      setExtraError('No additional markets configured for this sport yet')
+      return
+    }
+
+    setLoadingExtra(true)
+    setExtraError(null)
+
+    try {
+      const res = await fetch(
+        `/api/odds/event?sport=${event.sport_key}&eventId=${event.id}&markets=${marketsParam}`
+      )
+      if (!res.ok) throw new Error(`Request failed (${res.status})`)
+      const extraEvent: OddsEvent = await res.json()
+
+      // Merge the newly-fetched markets into a copy of this event's bookmakers,
+      // then reuse the app's existing +EV engine on the merged event.
+      const bookmakerMap = new Map(
+        event.bookmakers.map(b => [b.key, { ...b, markets: [...b.markets] }])
+      )
+      for (const b of extraEvent.bookmakers) {
+        const existing = bookmakerMap.get(b.key)
+        if (existing) {
+          const have = new Set(existing.markets.map(m => m.key))
+          existing.markets.push(...b.markets.filter(m => !have.has(m.key)))
+        } else {
+          bookmakerMap.set(b.key, b)
+        }
+      }
+      const merged: OddsEvent = { ...event, bookmakers: Array.from(bookmakerMap.values()) }
+
+      const marketKeys = marketsParam.split(',')
+      const bets = findEVBets(merged)
+        .filter(b => marketKeys.includes(b.market))
+        .sort((a, b) => b.ev - a.ev)
+
+      setExtraMarketKeys(marketKeys)
+      setExtraEvBets(bets)
+    } catch (err) {
+      setExtraError(err instanceof Error ? err.message : 'Failed to load additional markets')
+    } finally {
+      setLoadingExtra(false)
+    }
+  }
+
+
 
   // ── Find Pinnacle's market ──────────────────────────────────────────────────
   const pinnacleBook = event.bookmakers.find(b => b.key === 'pinnacle')
@@ -193,59 +191,10 @@ export default function GameModal({
     )
   }
 
-  // ── Pie chart config per market type ───────────────────────────────────────
-  function getPieConfig() {
-    if (market.startsWith('totals')) {
-      const overProb = pinnacleProbs['Over'] ?? 0.5
-      const underProb = pinnacleProbs['Under'] ?? 0.5
-      return {
-        probs: [overProb, underProb],
-        labels: [`Over ${point}`, `Under ${point}`],
-        colors: ['#1D4ED8', '#F97316'],
-        centerLabel: 'OVER PROB',
-      }
-    }
-
-    if (market.startsWith('spread')) {
-      const favOutcome = pinnacleMarket?.outcomes.find(o => o.name === favorite)
-      const dogOutcome = pinnacleMarket?.outcomes.find(o => o.name === underdog)
-      const favPoint = favOutcome?.point
-      const dogPoint = dogOutcome?.point
-      return {
-        probs: [favProb, dogProb],
-        labels: [
-          `${favorite} ${favPoint !== undefined ? (favPoint > 0 ? `+${favPoint}` : favPoint) : ''}`,
-          `${underdog} ${dogPoint !== undefined ? (dogPoint > 0 ? `+${dogPoint}` : dogPoint) : ''}`
-        ],
-        colors: ['#1D4ED8', '#F97316'],
-        centerLabel: 'COVER PROB'
-      }
-    }
-
-    if (hasDraw) {
-      return {
-        probs: [homeProb, drawProb, awayProb],
-        labels: [event.home_team, 'Draw', event.away_team],
-        colors: ['#1D4ED8', '#9CA3AF', '#F97316'],
-        centerLabel: 'WIN PROB',
-      }
-    }
-    
-    
-    // Default: return h2h 2way
-    return {
-      probs: [favProb, dogProb],
-      labels: [
-        favorite,
-        underdog
-      ],
-      colors: ['#1D4ED8', '#F97316'],
-      centerLabel: 'WIN PROB',
-    }
-    
-  }
-
-  const pieConfig = getPieConfig()
+  const pieConfig = getPieConfig({
+    market, point, favorite, favProb, underdog, dogProb,
+    pinnacleMarket, pinnacleProbs, hasDraw, drawProb,
+  });
 
   // ── Layout config per market type ──────────────────────────────────────────
   function renderBody() {
@@ -311,7 +260,7 @@ export default function GameModal({
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-8 border-b border-gray-800">
+        <div className="p-8">
           <div className="flex flex-col gap-2 items-center">
             <p className="text-2xl text-white font-semibold">
               {`${event.away_team} vs. ${event.home_team}`}
@@ -322,28 +271,123 @@ export default function GameModal({
           </div>
         </div>
 
-        {/* Score */}
-        {event.isLive && event.scores && (() => {
-          const away = event.scores.find(s => s.name === event.away_team)
-          const home = event.scores.find(s => s.name === event.home_team)
-          return (
-            <div className='flex justify-center items-center flex-col p-6 gap-6 border-b border-gray-800'>
-              <RedPulse/>
-              <p className="text-3xl font-mono font-bold text-white tabular-nums">
-                {event.away_team} {away?.score ?? '0'} — {home?.score ?? '0'} {event.home_team}
-              </p>
+        {/* Live button */}
+        {event.isLive &&
+          <div className="flex justify-center">
+            <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/40 rounded-lg px-4 py-1.5">
+              <span className="text-red-400 text-xs font-bold tracking-widest">LIVE</span>
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             </div>
-          )
-        })()}
-        
+          </div>
+        }
+
+        {/* Score */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 pb-10">
+
+          {/* Away team */}
+          <div className="flex items-center justify-end gap-4 p-6">
+
+            <div className="flex flex-col items-center pl-10 pr-10">
+              <div className="flex flex-row items-center gap-4">
+                {LOGOS[event.away_team] ? (
+                  <img src={LOGOS[event.away_team]} className="h-20 w-20 object-contain opacity-85" />
+                ) : (
+                  <div className="h-12 w-12" />
+                )}           
+              </div>
+              <p className="text-xs text-white-600 uppercase tracking-wider mt-2">{event.away_team}</p>
+            </div>
+
+            {event.isLive && event.scores && (
+              <p className="text-5xl font-bold text-red-900 font-mono">
+                {event.scores.find(s => s.name === event.away_team)?.score ?? '0'}
+              </p>
+            )}
+          </div>
+
+          {/* VS */}
+          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 border border-white/10 ml-5 mr-5">
+            <span className="text-xs text-gray-500 font-semibold">VS</span>
+          </div>
+
+          {/* Home team */}
+          <div className="flex flex-col items-center justify-start gap-4 p-6">
+            {event.isLive && event.scores && (
+              <p className="text-5xl font-bold text-red-900 font-mono">
+                {event.scores.find(s => s.name === event.home_team)?.score ?? '0'}
+              </p>
+            )}
+            <div className="flex flex-col items-center pl-10 pr-10">
+              <div className="flex flex-row items-center gap-4">
+                {LOGOS[event.home_team] ? (
+                  <img src={LOGOS[event.home_team]} className="h-20 w-20 object-contain opacity-85" />
+                ) : (
+                  <div className="h-12 w-12" />
+                )}                         </div>
+              <p className="text-xs justify-center text-white-600 uppercase tracking-wider mt-2">{event.home_team}</p>
+            </div>
+          </div>
+
+        </div>
+
+        <div className="w-full h-px bg-white/10" />
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-6">
           {renderBody()}
         </div>
 
-        <span className="ml-auto p-4 text-sm text-gray-600">Last updated {last_update}</span>
+        {extraError && (
+          <p className="text-xs text-red-400 px-1 mt-4">{extraError}</p>
+        )}
+
+        {extraMarketKeys && !extraError && (
+          extraEvBets.length === 0 ? (
+            <p className="text-xs text-gray-600 px-1 mt-4">No +EV bets found in these markets right now.</p>
+          ) : (
+            <table className="w-full text-sm mt-4">
+              <thead>
+                <tr className="text-left border-b border-gray-800">
+                  <th className="pb-2 text-xs text-gray-600 font-medium px-1">Market</th>
+                  <th className="pb-2 text-xs text-gray-600 font-medium px-1">Selection</th>
+                  <th className="pb-2 text-xs text-gray-600 font-medium px-1">Book</th>
+                  <th className="pb-2 text-xs text-gray-600 font-medium px-1 text-right">Odds</th>
+                  <th className="pb-2 text-xs text-gray-600 font-medium px-1 text-right">EV</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-900">
+                {extraEvBets.map((b, i) => (
+                  <tr key={i} className="hover:bg-gray-900/30 transition-colors">
+                    <td className="py-2 px-1 text-gray-500 text-xs">{MARKET_NAMES[b.market] ?? b.market}</td>
+                    <td className="py-2 px-1 text-gray-300 text-xs">
+                      {b.team}{b.point !== undefined ? ` ${b.point > 0 ? `+${b.point}` : b.point}` : ''}
+                    </td>
+                    <td className="py-2 px-1 text-gray-400 text-xs truncate max-w-[90px]">{b.bookmaker_title}</td>
+                    <td className="py-2 px-1 text-right font-mono text-xs tabular-nums font-bold text-emerald-400">
+                      {formatOdds(b.odds)}
+                    </td>
+                    <td className="py-2 px-1 text-right font-mono text-xs tabular-nums text-emerald-400">
+                      +{(b.ev * 100).toFixed(2)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        )}
+
+        <div className="flex items-center justify-between p-4 pt-4">
+          <button
+            onClick={loadAdditionalMarkets}
+            disabled={loadingExtra}
+            className="text-sm text-gray-600 hover:text-gray-300 disabled:opacity-50 transition-colors"
+          >
+            {loadingExtra ? 'Loading…' : 'Run additional markets'}
+          </button>
+          <span className="text-sm text-gray-600">Last updated {last_update}</span>
+        </div>
       </div>
     </div>
+
   )
 }

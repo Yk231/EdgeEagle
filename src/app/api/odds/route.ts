@@ -9,18 +9,28 @@ const USE_MOCK = process.env.NODE_ENV === 'development'
 
 export async function GET() {
 
-  if (USE_MOCK) { return NextResponse.json(mockData) }
+  //if (USE_MOCK) { return NextResponse.json(mockData) }
 
   try {
 
-    const ACTIVE_SPORTS = [
-      'baseball_mlb',
-      'soccer_fifa_world_cup',
-      // add others as needed
+    const events = await getAllOdds()
+
+    const SCORES_SUPPORTED = [
+      /*'baseball_mlb',
+      'americanfootball_nfl',
+      'basketball_nba',
+      'icehockey_nhl',
+      'basketball_wnba',
+      'soccer_fifa_world_cup',*/
+      'americanfootball_ncaaf'
     ]
 
-    const events = await getAllOdds()
-    const scoreMap = await getAllScores(ACTIVE_SPORTS, events)
+    const activeSports = [...new Set(events.map(e => e.sport_key))]
+      .filter(s => SCORES_SUPPORTED.includes(s))
+
+    const scoreMap = await getAllScores(activeSports, events)
+
+    
 
     const evBets: EVBet[] = events
       .flatMap(findEVBets)
@@ -46,3 +56,4 @@ export async function GET() {
     return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }
+

@@ -1,122 +1,28 @@
 import { OddsEvent } from '@/types/bets'
+import { SPORTS, BOOKMAKERS } from './constants'
 
 const API_KEY = process.env.ODDS_API_KEY
 const BASE_URL = 'https://api.the-odds-api.com/v4'
 
-const SPORTS = [
-  //'americanfootball_nfl',
-  //'basketball_nba',
-  'baseball_mlb',
-  //'icehockey_nhl',
-  //'basketball_wnba',
-  //'americanfootball_ncaafb',
-  'soccer_fifa_world_cup'
-]
 
-const SPORT_MARKETS: Record<string, string> = {
-    baseball_mlb: [
-        'h2h', 'spreads', 'totals',
-        /*'h2h_1st_1_innings', h2h_1st_3_innings', 'h2h_1st_5_innings', 'h2h_1st_7_innings',
-        'spreads_1st_1_innings', 'spreads_1st_3_innings', 'spreads_1st_5_innings', 'spreads_1st_7_innings',
-        'totals_1st_1_innings', 'totals_1st_3_innings', 'totals_1st_5_innings', 'totals_1st_7_innings',
-        */
-        ].join(','),
+const ACTIVE_SPORTS = SPORTS.filter(s => s.active)
+export const BOOKS = BOOKMAKERS.map(b => b.key).join(',')
 
-    icehockey_nhl: [
-        'h2h', 'spreads', 'totals',
-        'h2h_p1', 'h2h_p2', 'h2h_p3',
-        'h2h_3_way_p1', 'h2h_3_way_p2', 'h2h_3_way_p3',
-        'spreads_p1', 'spreads_p2', 'spreads_p3',
-        'totals_p1', 'totals_p2', 'totals_p3',
-    ].join(','),
 
-    americanfootball_nfl: [
-        'h2h', 'spreads', 'totals',
-        'h2h_h1', 'h2h_h2',
-        'spreads_h1', 'spreads_h2',
-        'totals_h1', 'totals_h2',
-        'h2h_q1', 'h2h_q2', 'h2h_q3', 'h2h_q4',
-        'spreads_q1', 'spreads_q2', 'spreads_q3', 'spreads_q4',
-        'totals_q1', 'totals_q2', 'totals_q3', 'totals_q4',
-    ].join(','),
 
-    basketball_nba: [
-        'h2h', 'spreads', 'totals',
-        'h2h_h1', 'h2h_h2',
-        'spreads_h1', 'spreads_h2',
-        'totals_h1', 'totals_h2',
-        'h2h_q1', 'h2h_q2', 'h2h_q3', 'h2h_q4',
-        'spreads_q1', 'spreads_q2', 'spreads_q3', 'spreads_q4',
-        'totals_q1', 'totals_q2', 'totals_q3', 'totals_q4',
-    ].join(','),
+export async function getOdds(sport: typeof ACTIVE_SPORTS[0]): Promise<OddsEvent[]> {
 
-    basketball_wnba: [
-        'h2h', 'spreads', 'totals',
-        'h2h_h1', 'h2h_h2',
-        'spreads_h1', 'spreads_h2',
-        'totals_h1', 'totals_h2',
-        'h2h_q1', 'h2h_q2', 'h2h_q3', 'h2h_q4',
-        'spreads_q1', 'spreads_q2', 'spreads_q3', 'spreads_q4',
-        'totals_q1', 'totals_q2', 'totals_q3', 'totals_q4',
-    ].join(','),
+    const markets = "h2h,spreads,totals"
 
-    americanfootball_ncaafb: [
-        'h2h', 'spreads', 'totals',
-        'h2h_h1', 'h2h_h2',
-        'spreads_h1', 'spreads_h2',
-        'totals_h1', 'totals_h2',
-        'h2h_q1', 'h2h_q2', 'h2h_q3', 'h2h_q4',
-        'spreads_q1', 'spreads_q2', 'spreads_q3', 'spreads_q4',
-        'totals_q1', 'totals_q2', 'totals_q3', 'totals_q4',
-    ].join(','),
-
-    soccer_fifa_world_cup: [
-        'h2h', 'spreads', 'totals',
-        //'h2h_h1', 'h2h_h2',
-        //'totals_h1', 'totals_h2',
-    ].join(','),
-}
-
-const BOOKS = [
-    // eu
-    'pinnacle', 
-    // us
-    'draftkings',
-    'fanduel',
-    'betmgm',
-    'betrivers',
-    'bovada',
-    'betonlineag',
-    'betus',
-    'mybookieag',
-    'lowvig',
-    'fanatics', // only for paid subscription
-    'williamhill_us', // only for paid subscription
-    // us2
-    'ballybet',
-    'betparx',
-    'espnbet',
-    'fliff',
-    'hardrockbet',
-    'rebet', // only for paid subscription
-    // us_ex
-    'betopenly',
-    'kalshi',
-    'novig',
-    'polymarket',
-    'prophetx',
-].join(',')
-
-export async function getOdds(sport: string): Promise<OddsEvent[]> {
-
-    const markets = SPORT_MARKETS[sport] ?? 'h2h,spreads,totals'
 
     const res = await fetch(
-        `${BASE_URL}/sports/${sport}/odds?apiKey=${API_KEY}&regions=us,us_ex,us2,eu&markets=${markets}&bookmakers=${BOOKS}&oddsFormat=american`,
+    `${BASE_URL}/sports/${sport.key}/odds?apiKey=${API_KEY}&markets=${markets}&oddsFormat=american&bookmakers=${BOOKS}`,
     )
 
+
+
     if (!res.ok) {
-        console.warn(`Fetch failed for ${sport}: ${res.status}`)
+        console.warn(`Fetch failed for ${sport.key}: ${res.status}`)
         return []
     }
 
@@ -125,7 +31,20 @@ export async function getOdds(sport: string): Promise<OddsEvent[]> {
     return events
 }
 
+/**
+ * Calls getOdds for all sports
+ * @returns Flat array of OddsEvents across all sports
+ */
 export async function getAllOdds(): Promise<OddsEvent[]> {
-    const results = await Promise.all(SPORTS.map(sport => getOdds(sport)))
-    return results.flat()
+    const results = await Promise.allSettled(ACTIVE_SPORTS.map(sport => getOdds(sport)))
+    
+    results.forEach((r, i) => {
+        if (r.status === 'rejected'){
+            console.error(`Failed ${ACTIVE_SPORTS[i].key}:`, r.reason)
+        }
+    })
+
+    return results
+        .filter(r => r.status === 'fulfilled')
+        .flatMap(r => (r as PromiseFulfilledResult<OddsEvent[]>).value)
 }
