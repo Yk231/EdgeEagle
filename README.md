@@ -9,6 +9,8 @@ EdgeEagle identifies positive expected value betting opportunities by comparing 
   <img width="49%" alt="Modal" src="Screenshots/EdgeEagleModal.png" />
 </p>
 
+![CI](https://github.com/Yk231/edgeeagle/actions/workflows/ci.yml/badge.svg)
+
 ---
 
 ## What is +EV betting?
