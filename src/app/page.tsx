@@ -64,8 +64,6 @@ export default function Home() {
   // Refresh bets
   async function fetchBets() {
     try {
-      setLoading(true)
-      setError(null)
       const res = await fetch('/api/odds')
       if (!res.ok) throw new Error('Failed to fetch')
       const data = await res.json()
@@ -80,13 +78,19 @@ export default function Home() {
   }
 
   useEffect(() => {
-    fetchBets()
+    const load = async () => { await fetchBets() }
+    load()
   }, [])
 
-  // Load more bets
-  useEffect(() => {
+  // Reset to page 1 whenever a filter changes
+  function updateMinEV(value: number) {
+    setMinEV(value)
     setPage(1)
-  }, [minEV, marketFilter])
+  }
+  function updateMarketFilter(next: Set<string>) {
+    setMarketFilter(next)
+    setPage(1)
+  }
 
   const paginated = deduped.slice(0, page * PAGE_SIZE)
   const hasMore = deduped.length > paginated.length
@@ -141,7 +145,7 @@ export default function Home() {
               max={5}
               step={0.1}
               value={minEV}
-              onChange={e => setMinEV(parseFloat(e.target.value))}
+              onChange={e => updateMinEV(parseFloat(e.target.value))}
               className="w-28 accent-emerald-400"
             />
             <span className="text-xs font-mono text-emerald-400 w-10">{minEV.toFixed(1)}%</span>
@@ -172,10 +176,10 @@ export default function Home() {
             onToggle={value => {
               const next = new Set(marketFilter)
               next.has(value) ? next.delete(value) : next.add(value)
-              setMarketFilter(next)
+              updateMarketFilter(next)
             }}
             onToggleAll={allSelected => {
-              setMarketFilter(allSelected ? new Set() : new Set(MARKETS.map(b => b.key)))
+              updateMarketFilter(allSelected ? new Set() : new Set(MARKETS.map(b => b.key)))
             }}
             names={MARKET_NAMES}
           />
@@ -199,9 +203,9 @@ export default function Home() {
             <button
               onClick={() => {
                 setBookFilter(new Set(BOOKMAKERS.map(b => b.name)))
-                setMarketFilter(new Set(MARKETS.map(b => b.key)))
+                updateMarketFilter(new Set(MARKETS.map(b => b.key)))
                 setSportFilter(new Set(SPORTS.map(b => b.key)))
-                setMinEV(0)
+                updateMinEV(0)
               }}
               className="text-xs text-gray-500 hover:text-white transition-colors px-3 py-1 border border-gray-800 rounded hover:border-gray-600"
             >
@@ -254,7 +258,7 @@ export default function Home() {
 
                         <div className="flex gap-2">
                           <span className="text-emerald-400 font-mono shrink-0">1.</span>
-                          <span>Pinnacle's odds are <span className="text-white">devigged</span> — their margin is removed so all outcomes sum to exactly 100%</span>
+                          <span>Pinnacle&apos;s odds are <span className="text-white">devigged</span> — their margin is removed so all outcomes sum to exactly 100%</span>
                         </div>
                         <div className="flex gap-2">
                           <span className="text-emerald-400 font-mono shrink-0">2.</span>
@@ -262,11 +266,11 @@ export default function Home() {
                         </div>
                         <div className="flex gap-2">
                           <span className="text-emerald-400 font-mono shrink-0">3.</span>
-                          <span>Each book's odds are compared against that true probability</span>
+                          <span>Each book&apos;s odds are compared against that true probability</span>
                         </div>
                         <div className="flex gap-2">
                           <span className="text-emerald-400 font-mono shrink-0">4.</span>
-                          <span>If a book offers better odds than fair value, that's a <span className="text-emerald-400">+EV bet</span></span>
+                          <span>If a book offers better odds than fair value, that&apos;s a <span className="text-emerald-400">+EV bet</span></span>
                         </div>
                       </div>
                     </div>

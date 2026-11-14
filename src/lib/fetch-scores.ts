@@ -10,7 +10,7 @@ export type GameScore = {
   completed: boolean
   isLive: boolean
   scores: { name: string; score: string }[] | null
-  last_update: string
+  last_update: string | null
 }
 
 export type ScoreMap = Record<string, GameScore>
@@ -33,9 +33,18 @@ async function getScores(sportkey: string): Promise<GameScore[]> {
     return []
   }
 
-  const data = await res.json()
 
-  return data.map((game: any) => ({
+  type ScoresApiGame = {
+    id: string
+    completed?: boolean
+    isLive: boolean
+    scores: { name: string; score: string }[] | null
+    last_update?: string | null
+  }
+
+  const data: ScoresApiGame[] = await res.json()
+
+  return data.map(game => ({
     id: game.id,
     completed: game.completed ?? false,
     isLive: !game.completed && game.scores !== null,

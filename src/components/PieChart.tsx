@@ -1,10 +1,10 @@
 import { Market } from "@/types/bets"
 
 export function PieChart({ probs, labels, colors, centerLabel }: {
-  probs: number[]
-  labels: string[]
-  colors: string[]
-  centerLabel?: string
+    probs: number[]
+    labels: string[]
+    colors: string[]
+    centerLabel?: string
 }) {
   if (!probs.length || probs.some((_, i) => !labels[i])) return null
 
@@ -13,13 +13,14 @@ export function PieChart({ probs, labels, colors, centerLabel }: {
   const r = 54
   const circumference = 2 * Math.PI * r
 
-  let cumulative = 0
   const slices = probs.map((prob, i) => {
-    const arc = circumference * prob
-    const offset = circumference * cumulative
-    cumulative += prob
-    return { arc, offset, color: colors[i], prob, label: labels[i] }
-  })
+    const before = probs.slice(0, i).reduce((sum, p) => sum + p, 0)
+    return {
+        arc: circumference * prob,
+        offset: circumference * before,
+        color: colors[i], prob, label: labels[i],
+    }
+})
 
   return (
     <div className="flex flex-col items-center gap-3">

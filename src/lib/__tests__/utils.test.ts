@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatGameTime, formatEV, formatOdds, americanToImplied, americanToProb, probToAmerican } from '@/lib/utils'
+import { formatOdds, americanToImplied, americanToProb, probToAmerican } from '@/lib/utils'
 
 describe('americanToImplied', () => {
   it('converts even money to 0.5', () => {
