@@ -1,3 +1,5 @@
+// Conversion functions
+
 export function probToAmerican(prob: number): string {
   if (prob <= 0 || prob >= 1) return "0"
   if (prob < 0.5) {
@@ -8,11 +10,7 @@ export function probToAmerican(prob: number): string {
 }
 
 export function americanToProb(odds: number): string {
-  if (odds > 0) {
-    return `${(100 / (odds + 100) * 100).toFixed(1)}%`
-  } else {
-    return `${(Math.abs(odds) / (Math.abs(odds) + 100) * 100).toFixed(1)}%`
-  }
+  return `${(americanToImplied(odds) * 100).toFixed(1)}%`
 }
 
 export function americanToImplied(odds: number): number {
@@ -23,6 +21,7 @@ export function americanToImplied(odds: number): number {
     }
 }
 
+// Format functions
 
 export function formatOdds(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`
@@ -63,13 +62,3 @@ export function formatGameTime(isoString: string): string {
     })
   }
 }
-
-export function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 !== 0
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2
-}
-
-

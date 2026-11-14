@@ -17,13 +17,19 @@ export type ScoreMap = Record<string, GameScore>
 
 // ─── Fetch ────────────────────────────────────────────────────────────────────
 
-async function getScores(sport: string): Promise<GameScore[]> {
+/**
+ * A function that calls the API fetches a GameScore array for every live game
+ * E.g. All live MLB games  
+ * @param sportkey - a given sport key
+ * @returns GameScore[] for all ongoing games under the sportkey paramenter
+ */
+async function getScores(sportkey: string): Promise<GameScore[]> {
   const res = await fetch(
-    `${BASE_URL}/sports/${sport}/scores?apiKey=${API_KEY}&daysFrom=1`,
+    `${BASE_URL}/sports/${sportkey}/scores?apiKey=${API_KEY}&daysFrom=1`,
   )
 
   if (!res.ok) {
-    console.warn(`Scores fetch failed for ${sport}: ${res.status}`)
+    console.warn(`Scores fetch failed for ${sportkey}: ${res.status}`)
     return []
   }
 
@@ -38,25 +44,28 @@ async function getScores(sport: string): Promise<GameScore[]> {
   }))
 }
 
+
+/**
+ * Function that calls getScores for all sports
+ * @param sports - an array of sport keys
+ * @param events - an OddsEvent array of all ongoing events
+ * @returns ScoreMap (Record<string, GameScore>) denoting all games and their scores
+ */
 export async function getAllScores(sports: string[], events: OddsEvent[]): Promise<ScoreMap> {
   const now = new Date()
-  
-  // Only fetch scores if any game is potentially live
-  const hasLiveGames = events.some(e => {
-    const start = new Date(e.commence_time)
+
+  // Function that returns true if a certain commenceTime is within 4 hours from now
+  function isPotentiallyLive(commenceTime: string): boolean {
+    const start = new Date(commenceTime)
     const hoursAgo = (now.getTime() - start.getTime()) / (1000 * 60 * 60)
-    return hoursAgo >= 0 && hoursAgo < 4 // started within last 4 hours
-  })
+    return hoursAgo >= 0 && hoursAgo < 4
+  }
 
-  if (!hasLiveGames) return {}
+  if (!events.some(e => isPotentiallyLive(e.commence_time))) return {}
 
-  // Only fetch scores for sports that have live games
+  // Filter out sports that are out of season
   const sportsWithLiveGames = sports.filter(sport =>
-    events.some(e => {
-      const start = new Date(e.commence_time)
-      const hoursAgo = (now.getTime() - start.getTime()) / (1000 * 60 * 60)
-      return e.sport_key === sport && hoursAgo >= 0 && hoursAgo < 4
-    })
+    events.some(e => e.sport_key === sport && isPotentiallyLive(e.commence_time))
   )
 
   const results = await Promise.allSettled(sportsWithLiveGames.map(s => getScores(s)))

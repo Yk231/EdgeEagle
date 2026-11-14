@@ -4,15 +4,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { probToAmerican, americanToProb, formatEV, formatGameTime, formatOdds } from '@/lib/utils'
 import GameModal from '../components/GameModal'
 import Filter from '@/components/Filters'
-import { EVBet, OddsEvent } from '@/types/bets'
-import { PAGE_SIZE, REFRESH_INTERVAL, SPORTS, SPORT_LOGOS, MARKETS, MARKET_NAMES, BOOKMAKERS, BOOKMAKER_LOGOS, BOOKMAKER_NAMES } from '@/lib/constants'
+import { EVBet, OddsEvent, Meta } from '@/types/bets'
+import { PAGE_SIZE, REFRESH_INTERVAL, SPORTS, SPORT_NAMES, SPORT_LOGOS, MARKETS, MARKET_NAMES, BOOKMAKERS, BOOKMAKER_LOGOS, BOOKMAKER_NAMES } from '@/lib/constants'
 import { GreenPulse, RedPulse } from '@/components/Pulse'
-
-type Meta = {
-  eventsScanned: number
-  betsFound: number
-  fetchedAt: string
-}
+import { CircleQuestionMark } from 'lucide-react'
 
 export default function Home() {
   const [bets, setBets] = useState<EVBet[]>([])
@@ -21,14 +16,14 @@ export default function Home() {
     betsFound: 0,
     fetchedAt: new Date().toISOString(),
   })
+  const [page, setPage] = useState(1)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [allEvents, setAllEvents] = useState<OddsEvent[]>([])
   const [selectedGame, setSelectedGame] = useState<{ event: OddsEvent; market: string; point?: number } | null>(null)
-  
-  const [page, setPage] = useState(1)
+
 
   // Filters
   const [minEV, setMinEV] = useState(0)
@@ -41,10 +36,35 @@ export default function Home() {
   const [marketFilter, setMarketFilter] = useState<Set<string>>(
     new Set(MARKETS.map(b => b.key))
   )
-  const [sortBy, setSortBy] = useState<'ev' | 'odds'>('ev')
+  const [isLiveFilter, setIsLiveFilter] = useState<Set<string>>(
+    new Set(['Live events', 'Future events'])
+  )
+  const filtered = bets
+    .filter(b => b.ev >= minEV / 100)
+    .filter(b => sportFilter.has(b.sport_key))
+    .filter(b => marketFilter.has(b.market))
+    .filter(b => bookFilter.has(b.bookmaker_title))
+    .filter(b => {
+      const event = allEvents.find(e => e.game_title === b.game_title)
+      const isLive = event?.isLive ?? false
+      if (isLiveFilter.has('Live events') && isLiveFilter.has('Future events')) return true
+      if (isLiveFilter.has('Live events') && isLive) return true
+      if (isLiveFilter.has('Future events') && !isLive) return true
+      return false
+    })
 
-  const fetchBets = useCallback(async () => {
+  const deduped = filtered.reduce((acc, bet) => {
+    const key = `${bet.game_title}_${bet.market}`
+    const existing = acc.find(b => `${b.game_title}_${b.market}` === key)
+    if (!existing) acc.push(bet)
+    return acc
+  }, [] as typeof filtered)
+
+
+  // Refresh bets
+  async function fetchBets() {
     try {
+      setLoading(true)
       setError(null)
       const res = await fetch('/api/odds')
       if (!res.ok) throw new Error('Failed to fetch')
@@ -52,36 +72,25 @@ export default function Home() {
       setBets(data.evBets)
       setMeta(data.meta)
       setAllEvents(data.allEvents ?? [])
-
     } catch {
-      setError('Failed to fetch odds. Retrying soon.')
+      setError('Failed to fetch odds.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }
 
-
-  // Refresh 
   useEffect(() => {
     fetchBets()
-  }, [fetchBets])
+  }, [])
 
   // Load more bets
   useEffect(() => {
     setPage(1)
-  }, [minEV, marketFilter, sortBy])
+  }, [minEV, marketFilter])
 
+  const paginated = deduped.slice(0, page * PAGE_SIZE)
+  const hasMore = deduped.length > paginated.length
 
-  const filtered = bets
-    .filter(b => b.ev >= minEV / 100)
-    .filter(b => sportFilter.has(b.sport_title))
-    .filter(b => marketFilter.has(b.market))
-    .filter(b => bookFilter.has(b.bookmaker_title))
-    .sort((a, b) => sortBy === 'ev' ? b.ev - a.ev : Math.abs(b.odds) - Math.abs(a.odds))
-
-  const paginated = filtered.slice(0, page * PAGE_SIZE)
-  const hasMore = filtered.length > paginated.length
-  
   return (
     <main className="min-h-screen bg-[#03060E] text-gray-100" style={{ fontFamily: 'system-ui, sans-serif' }}>
 
@@ -91,9 +100,10 @@ export default function Home() {
           <img src={'/logos/EdgeEagleLogo.png'} className=" h-34" />
 
           <div className="ml-auto flex items-center gap-4 text-base text-gray-500">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <GreenPulse />
               <span>Updated {new Date(meta.fetchedAt).toLocaleTimeString()}</span>
+              {/* Uncomment for <span>Refresh in {countdown}s</span> */}
             </div>
           </div>
         </div>
@@ -142,7 +152,7 @@ export default function Home() {
 
           <Filter
             label="Sports"
-            options={SPORTS.map(b => b.key)}
+            options={SPORTS.map(s => s.key)}
             selected={sportFilter}
             onToggle={value => {
               const next = new Set(sportFilter)
@@ -150,8 +160,9 @@ export default function Home() {
               setSportFilter(next)
             }}
             onToggleAll={allSelected => {
-              setSportFilter(allSelected ? new Set() : new Set(SPORTS.map(b => b.key)))
+              setSportFilter(allSelected ? new Set() : new Set(SPORTS.map(s => s.key)))
             }}
+            names={SPORT_NAMES}
           />
 
           <Filter
@@ -190,7 +201,6 @@ export default function Home() {
                 setBookFilter(new Set(BOOKMAKERS.map(b => b.name)))
                 setMarketFilter(new Set(MARKETS.map(b => b.key)))
                 setSportFilter(new Set(SPORTS.map(b => b.key)))
-                setSortBy('ev')
                 setMinEV(0)
               }}
               className="text-xs text-gray-500 hover:text-white transition-colors px-3 py-1 border border-gray-800 rounded hover:border-gray-600"
@@ -232,9 +242,36 @@ export default function Home() {
               <tr className="text-left">
                 <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider pr-6">Game</th>
                 <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider pr-6">Market</th>
-                <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider pr-6">Book Odds</th>
-                <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider pr-6">Consensus Odds</th>
-                <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider ">Expected Value</th>
+                <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider pr-6">Book Line</th>
+                <th className="pb-2 text-xs font-medium text-gray-600 uppercase tracking-wider pr-6">Sharp Line</th>
+                <th className="pb-2 text-xs font-medium text-gray-600 tracking-wider ">
+                  <div className="flex items-center gap-1.5">
+                    <p className='uppercase'>Expected Value</p>
+                    <div className="relative group">
+                      <CircleQuestionMark className="w-3.5 h-3.5 text-gray-700 cursor-help" />
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                          <p className="font-semibold text-white mb-2">How EV is calculated</p>
+
+                        <div className="flex gap-2">
+                          <span className="text-emerald-400 font-mono shrink-0">1.</span>
+                          <span>Pinnacle's odds are <span className="text-white">devigged</span> — their margin is removed so all outcomes sum to exactly 100%</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-emerald-400 font-mono shrink-0">2.</span>
+                          <span>This gives the <span className="text-white">true probability</span> of each outcome, free of bookmaker bias</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-emerald-400 font-mono shrink-0">3.</span>
+                          <span>Each book's odds are compared against that true probability</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-emerald-400 font-mono shrink-0">4.</span>
+                          <span>If a book offers better odds than fair value, that's a <span className="text-emerald-400">+EV bet</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-900">
@@ -248,16 +285,16 @@ export default function Home() {
                   className="group hover:bg-gray-900/40 transition-colors cursor-pointer"
                 >
 
-      
+
                   <td className="py-3 pr-6">
                     <div className="flex flex-row gap-4 items-center">
-                      <img src={SPORT_LOGOS[bet.sport_title]} alt={bet.sport_title} className=" h-10" />
+                      <img src={SPORT_LOGOS[bet.sport_key]} alt={bet.sport_title} className=" h-10" />
                       <div className="flex flex-col gap-2">
                         <span className="text-base font-semibold text-white-200">{bet.game_title}</span>
                         <div className="flex flex-row items-center gap-3 text-base font-medium text-gray-400">
-                          {bet.sport_title} • {formatGameTime(bet.commence_time)} 
+                          {bet.sport_title} • {formatGameTime(bet.commence_time)}
                           {allEvents.find(e => e.game_title === bet.game_title)?.isLive && (
-                            <RedPulse/>
+                            <RedPulse />
                           )}
                         </div>
                       </div>
@@ -265,7 +302,7 @@ export default function Home() {
                   </td>
 
 
-          
+
 
                   <td className="py-3 pr-6 font-semibold text-white">
                     <div className="flex flex-col gap-2">
@@ -300,12 +337,12 @@ export default function Home() {
                       <div className="flex flex-col py-3 pr-6 font-mono font-bold tabular-nums">
                         <p className="text-gray-300">{bet.bookmaker_title}</p>
                         <div className="flex flex-row gap-1">
-                          <p className="text-gray-400">Odds:</p> 
-                          <p className="text-amber-400">{formatOdds(bet.odds)}</p> 
+                          <p className="text-gray-400">Odds:</p>
+                          <p className="text-amber-400">{formatOdds(bet.odds)}</p>
                         </div>
                         <div className="flex flex-row gap-2">
-                          <p className="text-gray-400">Implied Prob:</p> 
-                          <p className="text-amber-400">{americanToProb(bet.odds)}</p> 
+                          <p className="text-gray-400">Implied Prob:</p>
+                          <p className="text-amber-400">{americanToProb(bet.odds)}</p>
                         </div>
                       </div>
                     </div>
@@ -317,12 +354,12 @@ export default function Home() {
                       <div className="flex flex-col py-3 pr-6 font-mono font-bold tabular-nums">
                         <p className="text-gray-300">Pinnacle</p>
                         <div className="flex flex-row gap-1">
-                          <p className="text-gray-400">Odds:</p> 
-                          <p className="text-amber-400">{probToAmerican(bet.trueProb)}</p> 
+                          <p className="text-gray-400">Odds:</p>
+                          <p className="text-amber-400">{probToAmerican(bet.trueProb)}</p>
                         </div>
                         <div className="flex flex-row gap-2">
-                          <p className="text-gray-400">Implied Prob:</p> 
-                          <p className="text-amber-400">{`${(bet.trueProb * 100).toFixed(1)}%`}</p> 
+                          <p className="text-gray-400">Implied Prob:</p>
+                          <p className="text-amber-400">{`${(bet.trueProb * 100).toFixed(1)}%`}</p>
                         </div>
                       </div>
 
@@ -358,7 +395,7 @@ export default function Home() {
         {!loading && (
           <div className="mt-8 pt-4 border-t border-gray-900 flex items-center justify-between text-base text-gray-700">
             <span>EV calculated vs Pinnacle devigged lines · {meta.eventsScanned} events · {meta.betsFound} raw bets before filters</span>
-            <span>Last updated {new Date(meta.fetchedAt).toLocaleTimeString()}</span>
+            <span suppressHydrationWarning>Last updated {new Date(meta.fetchedAt).toLocaleTimeString()}</span>
           </div>
         )}
       </div>
